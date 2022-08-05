@@ -1,0 +1,67 @@
+import json
+import urllib3
+import base64, zlib
+
+http = urllib3.PoolManager()
+hook = "<Enter your Slack webhook here>"
+
+# Sample 5xx error codes
+error_codes= {
+'500': 'Internal Server Error', 
+'501': 'Not Implemented', 
+'502': 'Bad Gateway', 
+'503': 'Service Unavailable',
+'504': 'Gateway Timeout'    
+}
+
+def lambda_handler(event, context):
+    
+    encoded_data = event['awslogs']['data']
+    decoded_data = json.loads(zlib.decompress(base64.b64decode(encoded_data), 16 + zlib.MAX_WBITS).decode('utf-8'))
+    log_events = decoded_data['logEvents'][0]['extractedFields']
+    
+    IP_ADDR = log_events['ip_addr']
+    RESOURCE = log_events['resource']
+    STATUS_CODE = log_events['status']
+    USER_AGENT = log_events['http_user_agent']
+
+    slack_message = {
+	"blocks": [
+		{
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": f"{STATUS_CODE} {error_codes[STATUS_CODE]}"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": f"*IP Address:* {IP_ADDR}"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": f"*Request:* {RESOURCE}"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": f"*User Agent:* {USER_AGENT}"
+			}
+		},
+		{
+			"type": "divider"
+		}
+	]
+   }
+
+    enc_msg = json.dumps(slack_message).encode('utf-8')
+    
+    # Send message to Slack (e.g. HTTP 503 Error on tutorialsdojo.com )
+    http.request('POST', hook, body = enc_msg, headers = {'Content-type': 'applicaton/json'})
